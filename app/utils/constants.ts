@@ -16,6 +16,61 @@ const logger = createScopedLogger('Constants');
 
 const PROVIDER_LIST: ProviderInfo[] = [
   {
+    name: 'ShuttleAI',
+    staticModels: [
+      {
+        name: 'shuttleai/shuttle-3',
+        label: 'Shuttle 3',
+        provider: 'ShuttleAI',
+        maxTokenAllowed: 8000,
+      },
+      {
+        name: 'shuttleai/shuttle-3-mini',
+        label: 'Shuttle 3 Mini',
+        provider: 'ShuttleAI',
+        maxTokenAllowed: 8000,
+      },
+      {
+        name: 'shuttleai/s1',
+        label: 'Shuttle S1 (Strawberry)',
+        provider: 'ShuttleAI',
+        maxTokenAllowed: 8000,
+      },
+      {
+        name: 'shuttleai/s1-mini',
+        label: 'Shuttle S1 Mini',
+        provider: 'ShuttleAI',
+        maxTokenAllowed: 8000,
+      },
+      {
+        name: 'shuttleai/shuttle-jaguar',
+        label: 'Shuttle Jaguar (Image Generation)',
+        provider: 'ShuttleAI',
+        maxTokenAllowed: 8000,
+      },
+      {
+        name: 'shuttleai/shuttle-3-diffusion',
+        label: 'Shuttle 3 Diffusion (Image Generation)',
+        provider: 'ShuttleAI',
+        maxTokenAllowed: 8000,
+      },
+      {
+        name: 'shuttleai/shuttle-rbg',
+        label: 'Shuttle RBG (Image Generation)',
+        provider: 'ShuttleAI',
+        maxTokenAllowed: 8000,
+      },
+      {
+        name: 'shuttleai/shuttle-stt',
+        label: 'Shuttle STT (Speech to Text)',
+        provider: 'ShuttleAI',
+        maxTokenAllowed: 8000,
+      },
+    ],
+    getDynamicModels: getShuttleAIModels,
+    getApiKeyLink: 'https://shuttle.ai/account',
+  },
+  {
     name: 'Anthropic',
     staticModels: [
       {
@@ -176,12 +231,6 @@ const PROVIDER_LIST: ProviderInfo[] = [
         maxTokenAllowed: 8000,
       },
       {
-        name: 'Qwen/Qwen2.5-Coder-32B-Instruct',
-        label: 'Qwen2.5-Coder-32B-Instruct (HuggingFace)',
-        provider: 'HuggingFace',
-        maxTokenAllowed: 8000,
-      },
-      {
         name: 'Qwen/Qwen2.5-72B-Instruct',
         label: 'Qwen2.5-72B-Instruct (HuggingFace)',
         provider: 'HuggingFace',
@@ -199,28 +248,9 @@ const PROVIDER_LIST: ProviderInfo[] = [
         provider: 'HuggingFace',
         maxTokenAllowed: 8000,
       },
-      {
-        name: '01-ai/Yi-1.5-34B-Chat',
-        label: 'Yi-1.5-34B-Chat (HuggingFace)',
-        provider: 'HuggingFace',
-        maxTokenAllowed: 8000,
-      },
-      {
-        name: 'codellama/CodeLlama-34b-Instruct-hf',
-        label: 'CodeLlama-34b-Instruct (HuggingFace)',
-        provider: 'HuggingFace',
-        maxTokenAllowed: 8000,
-      },
-      {
-        name: 'NousResearch/Hermes-3-Llama-3.1-8B',
-        label: 'Hermes-3-Llama-3.1-8B (HuggingFace)',
-        provider: 'HuggingFace',
-        maxTokenAllowed: 8000,
-      },
     ],
     getApiKeyLink: 'https://huggingface.co/settings/tokens',
   },
-
   {
     name: 'OpenAI',
     staticModels: [
@@ -342,6 +372,69 @@ export async function getModelList(
   return MODEL_LIST;
 }
 
+async function getShuttleAIModels(apiKeys?: Record<string, string>, settings?: IProviderSetting): Promise<ModelInfo[]> {
+  try {
+    const baseUrl = settings?.baseUrl || import.meta.env.SHUTTLEAI_API_BASE_URL || 'https://api.shuttle.ai';
+    const provider = 'ShuttleAI';
+
+    if (!baseUrl) {
+      return [];
+    }
+
+    let apiKey = import.meta.env.SHUTTLEAI_API_KEY ?? '';
+
+    if (apiKeys && apiKeys[provider]) {
+      apiKey = apiKeys[provider];
+    }
+
+    if (!apiKey) {
+      return [];
+    }
+
+    const response = await fetch(`${baseUrl}/v1/models`, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+    });
+    
+    const res = (await response.json()) as any;
+    
+    if (!res.data || !Array.isArray(res.data)) {
+      return [];
+    }
+    
+    // Include all models, not just ShuttleAI ones
+    const models = res.data.filter((model: any) => model.object !== 'proxy');
+
+    return models.map((model: any) => {
+      let pricingInfo = '';
+      
+      if (model.pricing) {
+        if (model.pricing.type === 'tokens') {
+          pricingInfo = ` - in:$${model.pricing.in_cost_per_million.toFixed(2)} out:$${model.pricing.out_cost_per_million.toFixed(2)}`;
+        } else if (model.pricing.type === 'image') {
+          pricingInfo = ` - $${model.pricing.cost_per_image.toFixed(3)}/image`;
+        } else if (model.pricing.type === 'time') {
+          pricingInfo = ` - $${(model.pricing.cost_per_second * 60).toFixed(4)}/minute`;
+        } else if (model.pricing.type === 'characters') {
+          pricingInfo = ` - $${model.pricing.cost_per_million.toFixed(2)}/million chars`;
+        }
+      }
+      
+      return {
+        name: model.id,
+        label: `${model.id}${pricingInfo}`,
+        provider: model.owned_by === 'shuttleai' ? 'ShuttleAI' : model.owned_by,
+        maxTokenAllowed: 8000,
+      };
+    });
+  } catch (e) {
+    console.error('Error getting ShuttleAI models:', e);
+    logStore.logError('Failed to get ShuttleAI models', e);
+    return [];
+  }
+}
+
 async function getTogetherModels(apiKeys?: Record<string, string>, settings?: IProviderSetting): Promise<ModelInfo[]> {
   try {
     const baseUrl = settings?.baseUrl || import.meta.env.TOGETHER_API_BASE_URL || '';
@@ -378,7 +471,7 @@ async function getTogetherModels(apiKeys?: Record<string, string>, settings?: IP
       maxTokenAllowed: 8000,
     }));
   } catch (e) {
-    console.error('Error getting OpenAILike models:', e);
+    console.error('Error getting Together models:', e);
     return [];
   }
 }
@@ -508,10 +601,8 @@ async function initializeModelList(providerSettings?: Record<string, IProviderSe
 
   try {
     const storedApiKeys = Cookies.get('apiKeys');
-
     if (storedApiKeys) {
       const parsedKeys = JSON.parse(storedApiKeys);
-
       if (typeof parsedKeys === 'object' && parsedKeys !== null) {
         apiKeys = parsedKeys;
       }
@@ -520,14 +611,13 @@ async function initializeModelList(providerSettings?: Record<string, IProviderSe
     logStore.logError('Failed to fetch API keys from cookies', error);
     logger.warn(`Failed to fetch apikeys from cookies: ${error?.message}`);
   }
+
   MODEL_LIST = [
-    ...(
-      await Promise.all(
-        PROVIDER_LIST.filter(
-          (p): p is ProviderInfo & { getDynamicModels: () => Promise<ModelInfo[]> } => !!p.getDynamicModels,
-        ).map((p) => p.getDynamicModels(apiKeys, providerSettings?.[p.name])),
-      )
-    ).flat(),
+    ...(await Promise.all(
+      PROVIDER_LIST.filter(
+        (p): p is ProviderInfo & { getDynamicModels: () => Promise<ModelInfo[]> } => !!p.getDynamicModels
+      ).map((p) => p.getDynamicModels(apiKeys, providerSettings?.[p.name]))
+    )).flat(),
     ...staticModels,
   ];
 
@@ -540,5 +630,6 @@ export {
   getLMStudioModels,
   initializeModelList,
   getOpenRouterModels,
+  getShuttleAIModels,
   PROVIDER_LIST,
 };
